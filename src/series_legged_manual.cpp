@@ -103,6 +103,7 @@ void SeriesLeggedManual::ctrlZPress()
   if (!supply_)
   {
     setChassisMode(rm_msgs::ChassisCmd::FOLLOW);
+    target_leg_length = 0.18;
     legCommandSender_->setLgeLength(0.18);
   }
 }
@@ -143,11 +144,13 @@ void SeriesLeggedManual::ctrlGPress()
 {
   if (!stretch_)
   {
-    legCommandSender_->setLgeLength(0.3);
+    target_leg_length = 0.36;
+    legCommandSender_->setLgeLength(0.36);
     stretch_ = true;
   }
   else
   {
+    target_leg_length = 0.18;
     legCommandSender_->setLgeLength(0.18);
     stretch_ = false;
   }
@@ -159,14 +162,35 @@ void SeriesLeggedManual::unstickCallback(const std_msgs::BoolConstPtr& msg)
   if (two_leg_unstick)
   {
     auto delta = legCommandSender_->getLgeLength() + 0.02;
-    legCommandSender_->setLgeLength(delta > 0.33 ? 0.33 : delta);
+    target_leg_length = delta > 0.36 ? 0.36 : delta;
+    legCommandSender_->setLgeLength(target_leg_length);
     stretching_ = true;
   }
   else if (stretching_ && !two_leg_unstick)
   {
-    legCommandSender_->setLgeLength(0.18);
+    legCommandSender_->setLgeLength(target_leg_length);
     stretching_ = false;
   }
+}
+
+void SeriesLeggedManual::leftSwitchUpRise()
+{
+  legCommandSender_->setJump(false);
+  return;
+}
+
+void SeriesLeggedManual::leftSwitchMidRise()
+{
+  legCommandSender_->setJump(false);
+  target_leg_length = 0.36;
+  legCommandSender_->setLgeLength(0.36);
+}
+
+void SeriesLeggedManual::leftSwitchDownRise()
+{
+  legCommandSender_->setJump(false);
+  target_leg_length = 0.20;
+  legCommandSender_->setLgeLength(0.20);
 }
 
 }  // namespace rm_manual

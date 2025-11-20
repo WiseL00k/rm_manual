@@ -25,6 +25,12 @@ protected:
   void rPress() override;
   void rRelease();
 
+  void leftSwitchUpRise() override;
+
+  void leftSwitchMidRise() override;
+
+  void leftSwitchDownRise() override;
+
   void sendCommand(const ros::Time& time) override;
   void checkKeyboard(const rm_msgs::DbusData::ConstPtr& dbus_data) override;
   void ctrlGPress();
@@ -32,6 +38,7 @@ protected:
 
 private:
   bool stretch_ = false, stretching_ = false, is_increasing_length_ = false;
+  double target_leg_length{ 0.18 };
   InputEvent ctrl_event_, ctrl_g_event_;
   ros::Subscriber unstick_sub_;
   void unstickCallback(const std_msgs::BoolConstPtr& msg);
