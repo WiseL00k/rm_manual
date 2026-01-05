@@ -176,8 +176,12 @@ void SeriesLeggedManual::ctrlWPressing()
   {
     last_upstairs_time_ = ros::Time::now();
     leg_len_status_ = HIGH;
-    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   }
+  else
+  {
+    leg_len_status_ = SHORT;
+  }
+  legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
 }
 
 void SeriesLeggedManual::unstickCallback(const std_msgs::BoolConstPtr& msg)
