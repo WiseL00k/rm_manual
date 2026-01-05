@@ -19,20 +19,26 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   b_event_.setEdge(boost::bind(&SeriesLeggedManual::bPress, this), boost::bind(&SeriesLeggedManual::bRelease, this));
   r_event_.setEdge(boost::bind(&SeriesLeggedManual::rPress, this), boost::bind(&SeriesLeggedManual::rRelease, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
+  ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
 
-  std::string unstick_topic, leg_len_status_topic, legged_chassis_mode_topic;
+  std::string unstick_topic, leg_len_status_topic, legged_chassis_mode_topic, tof_topic;
   leg_wheel_chassis_nh.param("unstick_topic", unstick_topic,
                              std::string("/controllers/legged_balance_controller/unstick/two_leg_unstick"));
   leg_wheel_chassis_nh.param("leg_len_status_topic", leg_len_status_topic,
                              std::string("/controllers/chassis_controller/leg_len_status"));
   leg_wheel_chassis_nh.param("legged_chassis_mode_topic", legged_chassis_mode_topic,
                              std::string("/controllers/chassis_controller/legged_chassis_mode"));
+  leg_wheel_chassis_nh.param("tof_topic", tof_topic, std::string("/tof"));
   unstick_sub_ =
       leg_wheel_chassis_nh.subscribe<std_msgs::Bool>(unstick_topic, 1, &SeriesLeggedManual::unstickCallback, this);
   leg_len_status_sub_ = leg_wheel_chassis_nh.subscribe<std_msgs::Bool>(leg_len_status_topic, 1,
                                                                        &SeriesLeggedManual::legLenStatusCallback, this);
   legged_chassis_mode_sub_ = leg_wheel_chassis_nh.subscribe<rm_msgs::LeggedChassisMode>(
       legged_chassis_mode_topic, 1, &SeriesLeggedManual::leggedChassisModeCallback, this);
+  left_tof_sensor_sub_ = leg_wheel_chassis_nh.subscribe<sensor_msgs::Range>(
+      tof_topic + "/left_tof_link", 10, &SeriesLeggedManual::tofSensorMsgCallback, this);
+  right_tof_sensor_sub_ = leg_wheel_chassis_nh.subscribe<sensor_msgs::Range>(
+      tof_topic + "/right_tof_link", 10, &SeriesLeggedManual::tofSensorMsgCallback, this);
 }
 
 void SeriesLeggedManual::sendCommand(const ros::Time& time)
@@ -74,6 +80,7 @@ void SeriesLeggedManual::checkKeyboard(const rm_msgs::DbusData::ConstPtr& dbus_d
   ChassisGimbalShooterCoverManual::checkKeyboard(dbus_data);
   ctrl_g_event_.update(dbus_data->key_ctrl && dbus_data->key_g);
   ctrl_event_.update(dbus_data->key_ctrl);
+  ctrl_w_event_.update(dbus_data->key_ctrl && dbus_data->key_w && !dbus_data->key_g);
 }
 
 void SeriesLeggedManual::updateRc(const rm_msgs::DbusData::ConstPtr& dbus_data)
@@ -163,6 +170,16 @@ void SeriesLeggedManual::ctrlGPress()
   }
 }
 
+void SeriesLeggedManual::ctrlWPressing()
+{
+  if (total_tof_len_ < 0.4 && (ros::Time::now() - last_upstairs_time_) > ros::Duration(2.0))
+  {
+    last_upstairs_time_ = ros::Time::now();
+    leg_len_status_ = HIGH;
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
+  }
+}
+
 void SeriesLeggedManual::unstickCallback(const std_msgs::BoolConstPtr& msg)
 {
   auto two_leg_unstick = msg->data;
@@ -212,6 +229,15 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
     trigger_gimbal_normal_flag = false;
     gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
   }
+}
+
+void SeriesLeggedManual::tofSensorMsgCallback(const sensor_msgs::RangeConstPtr& msg)
+{
+  if (msg->header.frame_id == "left_tof_link")
+    left_tof_len_ = msg->range;
+  else
+    right_tof_len = msg->range;
+  total_tof_len_ = (left_tof_len_ + right_tof_len) / 2.0;
 }
 
 void SeriesLeggedManual::leftSwitchUpRise()
