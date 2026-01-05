@@ -18,6 +18,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
 
   b_event_.setEdge(boost::bind(&SeriesLeggedManual::bPress, this), boost::bind(&SeriesLeggedManual::bRelease, this));
   r_event_.setEdge(boost::bind(&SeriesLeggedManual::rPress, this), boost::bind(&SeriesLeggedManual::rRelease, this));
+  r_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::rPressing, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
   ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
 
@@ -134,7 +135,18 @@ void SeriesLeggedManual::shiftPress()
 
 void SeriesLeggedManual::rPress()
 {
-  legCommandSender_->setJump(true);
+  if (total_tof_len_ < 1.0)
+  {
+    legCommandSender_->setJump(true);
+  }
+}
+
+void SeriesLeggedManual::rPressing()
+{
+  if (total_tof_len_ < 1.0)
+  {
+    legCommandSender_->setJump(true);
+  }
 }
 
 void SeriesLeggedManual::rRelease()
@@ -158,12 +170,14 @@ void SeriesLeggedManual::ctrlGPress()
 {
   if (!stretch_)
   {
+    leg_len_status_ = HIGH;
     target_leg_length_ = 0.36;
     legCommandSender_->setLgeLength(0.36);
     stretch_ = true;
   }
   else
   {
+    leg_len_status_ = SHORT;
     target_leg_length_ = 0.2;
     legCommandSender_->setLgeLength(0.2);
     stretch_ = false;
@@ -172,16 +186,19 @@ void SeriesLeggedManual::ctrlGPress()
 
 void SeriesLeggedManual::ctrlWPressing()
 {
-  if (total_tof_len_ < 0.4 && (ros::Time::now() - last_upstairs_time_) > ros::Duration(2.0))
+  if ((ros::Time::now() - last_upstairs_time_) > ros::Duration(2.0))
   {
-    last_upstairs_time_ = ros::Time::now();
-    leg_len_status_ = HIGH;
+    if (total_tof_len_ < 0.4)
+    {
+      last_upstairs_time_ = ros::Time::now();
+      leg_len_status_ = HIGH;
+    }
+    else
+    {
+      leg_len_status_ = SHORT;
+    }
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   }
-  else
-  {
-    leg_len_status_ = SHORT;
-  }
-  legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
 }
 
 void SeriesLeggedManual::unstickCallback(const std_msgs::BoolConstPtr& msg)
