@@ -11,7 +11,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   ros::NodeHandle leg_wheel_chassis_nh(nh, "balance/legged_wheel_chassis");
   legCommandSender_ = new rm_common::LegCommandSender(leg_wheel_chassis_nh);
 
-  leg_len_map_.emplace(SHORT, 0.22);
+  leg_len_map_.emplace(SHORT, 0.2);
   leg_len_map_.emplace(HIGH, 0.36);
   legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   legCommandSender_->setJump(false);
@@ -110,8 +110,8 @@ void SeriesLeggedManual::ctrlZPress()
   if (!supply_)
   {
     setChassisMode(rm_msgs::ChassisCmd::FOLLOW);
-    target_leg_length_ = 0.22;
-    legCommandSender_->setLgeLength(0.22);
+    target_leg_length_ = 0.2;
+    legCommandSender_->setLgeLength(0.2);
   }
 }
 
@@ -157,8 +157,8 @@ void SeriesLeggedManual::ctrlGPress()
   }
   else
   {
-    target_leg_length_ = 0.22;
-    legCommandSender_->setLgeLength(0.22);
+    target_leg_length_ = 0.2;
+    legCommandSender_->setLgeLength(0.2);
     stretch_ = false;
   }
 }
