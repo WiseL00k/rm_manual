@@ -12,7 +12,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   legCommandSender_ = new rm_common::LegCommandSender(leg_wheel_chassis_nh);
 
   leg_len_map_.emplace(SHORT, 0.2);
-  leg_len_map_.emplace(HIGH, 0.36);
+  leg_len_map_.emplace(HIGH, 0.38);
   legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   legCommandSender_->setJump(false);
 
@@ -242,7 +242,15 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
     }
     gimbal_cmd_sender_->setGimbalTrajFrameId("base_link");
     gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
-    gimbal_cmd_sender_->setGimbalTraj(0, pitch);
+    if (msg->mode == rm_msgs::LeggedChassisMode::RECOVERY)
+    {
+      gimbal_cmd_sender_->setGimbalTraj(yaw, pitch);
+    }
+    else
+    {
+      // avoid leg crash gimbal
+      gimbal_cmd_sender_->setGimbalTraj(-0.0, pitch);
+    }
     trigger_gimbal_normal_flag = true;
   }
   else if (trigger_gimbal_normal_flag)
