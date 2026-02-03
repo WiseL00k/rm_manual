@@ -11,8 +11,11 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   ros::NodeHandle leg_wheel_chassis_nh(nh, "balance/legged_wheel_chassis");
   legCommandSender_ = new rm_common::LegCommandSender(leg_wheel_chassis_nh);
 
-  leg_len_map_.emplace(SHORT, 0.2);
-  leg_len_map_.emplace(HIGH, 0.36);
+  double short_leg_len{}, high_leg_len{};
+  leg_wheel_chassis_nh.param("short_leg_length", short_leg_len, 0.2);
+  leg_wheel_chassis_nh.param("high_leg_length", high_leg_len, 0.36);
+  leg_len_map_.emplace(SHORT, short_leg_len);
+  leg_len_map_.emplace(HIGH, high_leg_len);
   legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   legCommandSender_->setJump(false);
 
