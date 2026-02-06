@@ -6,6 +6,7 @@
 
 #include "rm_manual/balance_manual.h"
 #include <rm_msgs/LeggedChassisMode.h>
+#include <rm_msgs/LeggedUpstairStatus.h>
 #include <sensor_msgs/Range.h>
 
 namespace rm_manual
@@ -44,19 +45,21 @@ private:
   enum Leg_len_status
   {
     SHORT,
+    MID,
     HIGH
   };
   bool stretch_ = false, stretching_ = false, is_increasing_length_ = false;
   Leg_len_status leg_len_status_{ SHORT };
+  int upstair_leg_len_fsm_{ 0 };
   std::map<Leg_len_status, double> leg_len_map_;
-  double target_leg_length_{ 0.22 }, current_leg_length_{};
+  double target_leg_length_{ 0.20 }, current_leg_length_{};
   ros::Time last_upstairs_time_{};
   double total_tof_len_{}, left_tof_len_{}, right_tof_len{};
   InputEvent ctrl_event_, ctrl_g_event_, ctrl_w_event_;
   ros::Subscriber unstick_sub_, leg_len_status_sub_, legged_chassis_mode_sub_;
   ros::Subscriber left_tof_sensor_sub_, right_tof_sensor_sub_;
   void unstickCallback(const std_msgs::BoolConstPtr& msg);
-  void legLenStatusCallback(const std_msgs::BoolConstPtr& msg);
+  void upstairStatusCallback(const rm_msgs::LeggedUpstairStatusConstPtr& msg);
   void leggedChassisModeCallback(const rm_msgs::LeggedChassisModeConstPtr& msg);
   void tofSensorMsgCallback(const sensor_msgs::RangeConstPtr& msg);
 };

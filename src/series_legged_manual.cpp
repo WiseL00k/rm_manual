@@ -11,10 +11,12 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   ros::NodeHandle leg_wheel_chassis_nh(nh, "balance/legged_wheel_chassis");
   legCommandSender_ = new rm_common::LegCommandSender(leg_wheel_chassis_nh);
 
-  double short_leg_len{}, high_leg_len{};
+  double short_leg_len{}, mid_leg_length{}, high_leg_len{};
   leg_wheel_chassis_nh.param("short_leg_length", short_leg_len, 0.2);
+  leg_wheel_chassis_nh.param("mid_leg_length", mid_leg_length, 0.32);
   leg_wheel_chassis_nh.param("high_leg_length", high_leg_len, 0.36);
   leg_len_map_.emplace(SHORT, short_leg_len);
+  leg_len_map_.emplace(MID, mid_leg_length);
   leg_len_map_.emplace(HIGH, high_leg_len);
   legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   legCommandSender_->setJump(false);
@@ -25,18 +27,18 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
   ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
 
-  std::string unstick_topic, leg_len_status_topic, legged_chassis_mode_topic, tof_topic;
+  std::string unstick_topic, upstair_status_topic, legged_chassis_mode_topic, tof_topic;
   leg_wheel_chassis_nh.param("unstick_topic", unstick_topic,
                              std::string("/controllers/legged_balance_controller/unstick/two_leg_unstick"));
-  leg_wheel_chassis_nh.param("leg_len_status_topic", leg_len_status_topic,
-                             std::string("/controllers/chassis_controller/leg_len_status"));
+  leg_wheel_chassis_nh.param("upstair_status_topic", upstair_status_topic,
+                             std::string("/controllers/chassis_controller/upstair_status"));
   leg_wheel_chassis_nh.param("legged_chassis_mode_topic", legged_chassis_mode_topic,
                              std::string("/controllers/chassis_controller/legged_chassis_mode"));
   leg_wheel_chassis_nh.param("tof_topic", tof_topic, std::string("/tof"));
   unstick_sub_ =
       leg_wheel_chassis_nh.subscribe<std_msgs::Bool>(unstick_topic, 1, &SeriesLeggedManual::unstickCallback, this);
-  leg_len_status_sub_ = leg_wheel_chassis_nh.subscribe<std_msgs::Bool>(leg_len_status_topic, 1,
-                                                                       &SeriesLeggedManual::legLenStatusCallback, this);
+  leg_len_status_sub_ = leg_wheel_chassis_nh.subscribe<rm_msgs::LeggedUpstairStatus>(
+      upstair_status_topic, 1, &SeriesLeggedManual::upstairStatusCallback, this);
   legged_chassis_mode_sub_ = leg_wheel_chassis_nh.subscribe<rm_msgs::LeggedChassisMode>(
       legged_chassis_mode_topic, 1, &SeriesLeggedManual::leggedChassisModeCallback, this);
   left_tof_sensor_sub_ = leg_wheel_chassis_nh.subscribe<sensor_msgs::Range>(
@@ -121,8 +123,8 @@ void SeriesLeggedManual::ctrlZPress()
   if (!supply_)
   {
     setChassisMode(rm_msgs::ChassisCmd::FOLLOW);
-    target_leg_length_ = 0.2;
-    legCommandSender_->setLgeLength(0.2);
+    leg_len_status_ = SHORT;
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   }
 }
 
@@ -173,16 +175,16 @@ void SeriesLeggedManual::ctrlGPress()
 {
   if (!stretch_)
   {
+    upstair_leg_len_fsm_ = 2;
     leg_len_status_ = HIGH;
-    target_leg_length_ = 0.36;
-    legCommandSender_->setLgeLength(0.36);
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
     stretch_ = true;
   }
   else
   {
+    upstair_leg_len_fsm_ = 0;
     leg_len_status_ = SHORT;
-    target_leg_length_ = 0.2;
-    legCommandSender_->setLgeLength(0.2);
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
     stretch_ = false;
   }
 }
@@ -221,10 +223,17 @@ void SeriesLeggedManual::unstickCallback(const std_msgs::BoolConstPtr& msg)
   }
 }
 
-void SeriesLeggedManual::legLenStatusCallback(const std_msgs::BoolConstPtr& msg)
+void SeriesLeggedManual::upstairStatusCallback(const rm_msgs::LeggedUpstairStatusConstPtr& msg)
 {
-  auto leg_len_status = msg->data;
-  leg_len_status_ = leg_len_status ? HIGH : SHORT;
+  if (msg->upstair_flag)
+    --upstair_leg_len_fsm_;
+  if (upstair_leg_len_fsm_ == 1)
+    leg_len_status_ = MID;
+  else if (upstair_leg_len_fsm_ <= 0)
+  {
+    leg_len_status_ = SHORT;
+    upstair_leg_len_fsm_ = 0;
+  }
   target_leg_length_ = leg_len_map_[leg_len_status_];
   legCommandSender_->setLgeLength(target_leg_length_);
 }
@@ -274,22 +283,27 @@ void SeriesLeggedManual::tofSensorMsgCallback(const sensor_msgs::RangeConstPtr& 
 
 void SeriesLeggedManual::leftSwitchUpRise()
 {
+  BalanceManual::leftSwitchUpRise();
   //  legCommandSender_->setJump(true);
   return;
 }
 
 void SeriesLeggedManual::leftSwitchMidRise()
 {
-  legCommandSender_->setJump(false);
-  leg_len_status_ = leg_len_status_ != SHORT ? SHORT : HIGH;
-  target_leg_length_ = leg_len_map_[leg_len_status_];
-  legCommandSender_->setLgeLength(target_leg_length_);
+  BalanceManual::leftSwitchMidRise();
+  //  legCommandSender_->setJump(false);
+  //  upstair_leg_len_fsm_ = 2;
+  //  leg_len_status_ = HIGH;
+  //  target_leg_length_ = leg_len_map_[leg_len_status_];
+  //  legCommandSender_->setLgeLength(target_leg_length_);
   //  legCommandSender_->setJump(true);
 }
 
 void SeriesLeggedManual::leftSwitchDownRise()
 {
+  BalanceManual::leftSwitchDownRise();
   legCommandSender_->setJump(false);
+  upstair_leg_len_fsm_ = 0;
   leg_len_status_ = SHORT;
   target_leg_length_ = leg_len_map_[leg_len_status_];
   legCommandSender_->setLgeLength(target_leg_length_);
