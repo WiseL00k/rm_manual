@@ -29,6 +29,12 @@ protected:
   void rPressing();
   void rRelease();
   void ctrlWPressing();
+  void zPress() override;
+
+  void aPress() override;
+  void aPressing() override;
+  void dPress() override;
+  void dPressing() override;
 
   void leftSwitchUpRise() override;
 

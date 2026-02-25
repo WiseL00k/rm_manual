@@ -33,8 +33,11 @@ protected:
   void rightSwitchMidRise() override;
   void sendCommand(const ros::Time& time) override;
 
+protected:
+  bool reverse_ = false;
+
 private:
-  bool flank_ = false, reverse_ = false;
+  bool flank_ = false;
   std::string flank_frame_, reverse_frame_;
 };
 }  // namespace rm_manual

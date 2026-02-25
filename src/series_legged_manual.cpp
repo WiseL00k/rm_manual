@@ -26,7 +26,6 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   r_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::rPressing, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
   ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
-
   std::string unstick_topic, upstair_status_topic, legged_chassis_mode_topic, tof_topic;
   leg_wheel_chassis_nh.param("unstick_topic", unstick_topic,
                              std::string("/controllers/legged_balance_controller/unstick/two_leg_unstick"));
@@ -140,18 +139,32 @@ void SeriesLeggedManual::shiftPress()
 
 void SeriesLeggedManual::rPress()
 {
-  if (total_tof_len_ < 1.0)
+  if (!stretch_)
   {
-    legCommandSender_->setJump(true);
+    upstair_leg_len_fsm_ = 1;
+    leg_len_status_ = HIGH;
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
+    stretch_ = true;
   }
+  else
+  {
+    upstair_leg_len_fsm_ = 0;
+    leg_len_status_ = SHORT;
+    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
+    stretch_ = false;
+  }
+  //  if (total_tof_len_ < 1.0)
+  //  {
+  //    legCommandSender_->setJump(true);
+  //  }
 }
 
 void SeriesLeggedManual::rPressing()
 {
-  if (total_tof_len_ < 1.0)
-  {
-    legCommandSender_->setJump(true);
-  }
+  //  if (total_tof_len_ < 1.0)
+  //  {
+  //    legCommandSender_->setJump(true);
+  //  }
 }
 
 void SeriesLeggedManual::rRelease()
@@ -175,7 +188,7 @@ void SeriesLeggedManual::ctrlGPress()
 {
   if (!stretch_)
   {
-    upstair_leg_len_fsm_ = 2;
+    upstair_leg_len_fsm_ = 1;
     leg_len_status_ = HIGH;
     legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
     stretch_ = true;
@@ -228,7 +241,7 @@ void SeriesLeggedManual::upstairStatusCallback(const rm_msgs::LeggedUpstairStatu
   if (msg->upstair_flag)
     --upstair_leg_len_fsm_;
   if (upstair_leg_len_fsm_ == 1)
-    leg_len_status_ = MID;
+    leg_len_status_ = HIGH;
   else if (upstair_leg_len_fsm_ <= 0)
   {
     leg_len_status_ = SHORT;
@@ -292,7 +305,7 @@ void SeriesLeggedManual::leftSwitchMidRise()
 {
   BalanceManual::leftSwitchMidRise();
   //  legCommandSender_->setJump(false);
-  //  upstair_leg_len_fsm_ = 2;
+  //  upstair_leg_len_fsm_ = 1;
   //  leg_len_status_ = HIGH;
   //  target_leg_length_ = leg_len_map_[leg_len_status_];
   //  legCommandSender_->setLgeLength(target_leg_length_);
@@ -307,6 +320,26 @@ void SeriesLeggedManual::leftSwitchDownRise()
   leg_len_status_ = SHORT;
   target_leg_length_ = leg_len_map_[leg_len_status_];
   legCommandSender_->setLgeLength(target_leg_length_);
+}
+void SeriesLeggedManual::zPress()
+{
+  reverse_ = !reverse_;
+}
+
+void SeriesLeggedManual::aPress()
+{
+}
+
+void SeriesLeggedManual::aPressing()
+{
+}
+
+void SeriesLeggedManual::dPress()
+{
+}
+
+void SeriesLeggedManual::dPressing()
+{
 }
 
 }  // namespace rm_manual
