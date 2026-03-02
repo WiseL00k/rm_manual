@@ -186,20 +186,6 @@ void SeriesLeggedManual::bRelease()
 
 void SeriesLeggedManual::ctrlGPress()
 {
-  if (!stretch_)
-  {
-    upstair_leg_len_fsm_ = 1;
-    leg_len_status_ = HIGH;
-    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
-    stretch_ = true;
-  }
-  else
-  {
-    upstair_leg_len_fsm_ = 0;
-    leg_len_status_ = SHORT;
-    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
-    stretch_ = false;
-  }
 }
 
 void SeriesLeggedManual::ctrlWPressing()
