@@ -25,6 +25,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   r_event_.setEdge(boost::bind(&SeriesLeggedManual::rPress, this), boost::bind(&SeriesLeggedManual::rRelease, this));
   r_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::rPressing, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
+  ctrl_g_event_.setFalling(boost::bind(&SeriesLeggedManual::ctrlGRelease, this));
   ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
   std::string unstick_topic, upstair_status_topic, legged_chassis_mode_topic, tof_topic;
   leg_wheel_chassis_nh.param("unstick_topic", unstick_topic,
@@ -186,6 +187,12 @@ void SeriesLeggedManual::bRelease()
 
 void SeriesLeggedManual::ctrlGPress()
 {
+  chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::RECOVERY);
+}
+
+void SeriesLeggedManual::ctrlGRelease()
+{
+  chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::FOLLOW);
 }
 
 void SeriesLeggedManual::ctrlWPressing()
@@ -252,13 +259,14 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
       ROS_WARN("%s", ex.what());
     }
     gimbal_cmd_sender_->setGimbalTrajFrameId("base_link");
-    gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
     if (msg->mode == rm_msgs::LeggedChassisMode::RECOVERY)
     {
-      gimbal_cmd_sender_->setGimbalTraj(yaw, pitch);
+      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
+      gimbal_cmd_sender_->setZero();
     }
     else
     {
+      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
       // avoid leg crash gimbal
       gimbal_cmd_sender_->setGimbalTraj(-0.0, pitch);
     }

@@ -45,6 +45,7 @@ protected:
   void sendCommand(const ros::Time& time) override;
   void checkKeyboard(const rm_msgs::DbusData::ConstPtr& dbus_data) override;
   void ctrlGPress();
+  void ctrlGRelease();
   rm_common::LegCommandSender* legCommandSender_{};
 
 private:
