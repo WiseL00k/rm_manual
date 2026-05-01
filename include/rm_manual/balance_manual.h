@@ -35,8 +35,6 @@ protected:
 
 protected:
   bool reverse_ = false;
-
-private:
   bool flank_ = false;
   std::string flank_frame_, reverse_frame_;
 };
