@@ -321,8 +321,7 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
     {
       //      ROS_WARN("%s", ex.what());
     }
-    gimbal_cmd_sender_->setGimbalTrajFrameId("base_link");
-    //    gimbal_cmd_sender_->setTrajFrameId("base_link");
+    gimbal_cmd_sender_->setTrajFrameId("base_link");
     if (msg->mode == rm_msgs::LeggedChassisMode::RECOVERY)
     {
       gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
