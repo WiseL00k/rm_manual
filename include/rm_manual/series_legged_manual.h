@@ -9,6 +9,7 @@
 #include <rm_msgs/LeggedUpstairStatus.h>
 #include <rm_ecat_msgs/RmEcatStandardSlaveReadings.h>
 #include <sensor_msgs/Range.h>
+#include <std_msgs/Bool.h>
 
 namespace rm_manual
 {
@@ -35,6 +36,16 @@ protected:
   void zPress() override;
   void robotDie() override;
   void robotRevive() override;
+  void ePress() override;
+  void eRelease() override;
+  void qPress() override;
+
+  void aPress() override;
+  void aPressing() override;
+  void aRelease() override;
+  void dPress() override;
+  void dPressing() override;
+  void dRelease() override;
 
   void leftSwitchUpRise() override;
 
@@ -62,6 +73,7 @@ private:
     HIGH
   };
   ros::Time xPress_time_{}, ctrlXPress_time_{};
+  double jump_up_range_threshold_{ 0.8 };
   bool stretch_ = false, stretching_ = false, is_increasing_length_ = false;
   bool is_die_flag_{ false }, sit_down_flag_{ false };
   Leg_len_status leg_len_status_{ SHORT };
@@ -72,11 +84,13 @@ private:
   double total_tof_len_{}, left_tof_len_{}, right_tof_len{};
   bool left_wheel_online_, right_wheel_online_;
   bool debug_gimbal_flag_{ false };
+  bool jump_up_flag_{ false };
   InputEvent ctrl_event_, ctrl_g_event_, ctrl_w_event_;
   InputEvent revive_motor_online_check_event_;
   ros::Subscriber revive_motor_online_sub_;
   ros::Subscriber left_tof_sensor_sub_, right_tof_sensor_sub_;
   ros::Subscriber unstick_sub_, leg_len_status_sub_, legged_chassis_mode_sub_;
+  ros::Publisher recovery_leg_spd_turnback_pub_;
   void unstickCallback(const std_msgs::BoolConstPtr& msg);
   void upstairStatusCallback(const rm_msgs::LeggedUpstairStatusConstPtr& msg);
   void leggedChassisModeCallback(const rm_msgs::LeggedChassisModeConstPtr& msg);

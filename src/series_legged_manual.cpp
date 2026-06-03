@@ -38,6 +38,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   leg_wheel_chassis_nh.param("legged_chassis_mode_topic", legged_chassis_mode_topic,
                              std::string("/controllers/chassis_controller/legged_chassis_mode"));
   leg_wheel_chassis_nh.param("tof_topic", tof_topic, std::string("/tof"));
+  leg_wheel_chassis_nh.param("jump_up_range_threshold", jump_up_range_threshold_, 0.9);
   unstick_sub_ =
       leg_wheel_chassis_nh.subscribe<std_msgs::Bool>(unstick_topic, 1, &SeriesLeggedManual::unstickCallback, this);
   leg_len_status_sub_ = leg_wheel_chassis_nh.subscribe<rm_msgs::LeggedUpstairStatus>(
@@ -50,6 +51,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
       tof_topic + "/right_tof_link", 10, &SeriesLeggedManual::tofSensorMsgCallback, this);
   revive_motor_online_sub_ = leg_wheel_chassis_nh.subscribe<rm_ecat_msgs::RmEcatStandardSlaveReadings>(
       "/rm_ecat_hw/rm_readings", 10, &SeriesLeggedManual::reviveMotorOnlineCallback, this);
+  recovery_leg_spd_turnback_pub_ = leg_wheel_chassis_nh.advertise<std_msgs::Bool>("/recovery_leg_spd_turnback", 1);
 
   xPress_time_ = ctrlXPress_time_ = ros::Time::now();
 }
@@ -90,30 +92,18 @@ void SeriesLeggedManual::sendCommand(const ros::Time& time)
     }
   }
   BalanceManual::sendCommand(time);
-  //  if (is_gyro_)
-  //  {
-  //    double current_length = legCommandSender_->getLgeLength();
-  //    if (is_increasing_length_)
-  //    {
-  //      if (current_length < leg_len_map_[MID])
-  //      {
-  //        double delta = current_length + 0.002;
-  //        legCommandSender_->setLgeLength(delta > leg_len_map_[MID] ? leg_len_map_[MID] : delta);
-  //      }
-  //      else
-  //        is_increasing_length_ = false;
-  //    }
-  //    else
-  //    {
-  //      if (current_length > leg_len_map_[SHORT])
-  //      {
-  //        double delta = current_length - 0.002;
-  //        legCommandSender_->setLgeLength(delta < leg_len_map_[SHORT] ? leg_len_map_[SHORT] : delta);
-  //      }
-  //      else
-  //        is_increasing_length_ = true;
-  //    }
-  //  }
+  if (jump_up_flag_)
+  {
+    if (total_tof_len_ < jump_up_range_threshold_)
+    {
+      legCommandSender_->setJump(true);
+      jump_up_flag_ = false;
+    }
+  }
+  else
+  {
+    legCommandSender_->setJump(false);
+  }
   legCommandSender_->sendCommand(time);
 }
 
@@ -139,13 +129,13 @@ void SeriesLeggedManual::updateRc(const rm_msgs::DbusData::ConstPtr& dbus_data)
     if (!dbus_data->wheel && chassis_cmd_sender_->getMsg()->mode == rm_msgs::ChassisCmd::FOLLOW &&
         std::sqrt(std::pow(vel_cmd_sender_->getMsg()->linear.x, 2) + std::pow(vel_cmd_sender_->getMsg()->linear.y, 2)) >
             0.0)
-      chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::BURST);
+      chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::NORMAL);
     else if (chassis_power_ < 6.0 && chassis_cmd_sender_->getMsg()->mode == rm_msgs::ChassisCmd::FOLLOW)
-      chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::BURST);
+      chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::NORMAL);
   }
   else
   {
-    chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::BURST);
+    chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::NORMAL);
   }
   if (is_die_flag_ || debug_gimbal_flag_)
   {
@@ -174,13 +164,9 @@ void SeriesLeggedManual::rightSwitchMidRise()
 
 void SeriesLeggedManual::ctrlZPress()
 {
-  BalanceManual::ctrlZPress();
-  if (!supply_)
-  {
-    setChassisMode(rm_msgs::ChassisCmd::FOLLOW);
-    leg_len_status_ = SHORT;
-    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
-  }
+  std_msgs::Bool msg;
+  msg.data = true;
+  recovery_leg_spd_turnback_pub_.publish(msg);
 }
 
 void SeriesLeggedManual::shiftRelease()
@@ -199,34 +185,22 @@ void SeriesLeggedManual::rPress()
 {
   if (!stretch_)
   {
-    chassis_cmd_sender_->power_limit_->setBurstPowerLimit(140);
-    chassis_cmd_sender_->power_limit_->updateSafetyPower(140);
     upstair_leg_len_fsm_ = 1;
-    leg_len_status_ = HIGH;
+    setLegLenStatus(HIGH);
     legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
     stretch_ = true;
   }
   else
   {
-    chassis_cmd_sender_->power_limit_->setBurstPowerLimit(260);
-    chassis_cmd_sender_->power_limit_->updateSafetyPower(260);
     upstair_leg_len_fsm_ = 0;
-    leg_len_status_ = SHORT;
+    setLegLenStatus(SHORT);
     legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
     stretch_ = false;
   }
-  //  if (total_tof_len_ < 1.0)
-  //  {
-  //    legCommandSender_->setJump(true);
-  //  }
 }
 
 void SeriesLeggedManual::rPressing()
 {
-  //  if (total_tof_len_ < 1.0)
-  //  {
-  //    legCommandSender_->setJump(true);
-  //  }
 }
 
 void SeriesLeggedManual::rRelease()
@@ -236,14 +210,12 @@ void SeriesLeggedManual::rRelease()
 
 void SeriesLeggedManual::bPress()
 {
-  ChassisGimbalShooterCoverManual::bPress();
-  chassis_cmd_sender_->updateSafetyPower(60);
+  jump_up_flag_ = true;
 }
 
 void SeriesLeggedManual::bRelease()
 {
-  chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::BURST);
-  chassis_cmd_sender_->updateSafetyPower(60);
+  jump_up_flag_ = true;
 }
 
 void SeriesLeggedManual::ctrlGPress()
@@ -258,9 +230,9 @@ void SeriesLeggedManual::ctrlGRelease()
 
 void SeriesLeggedManual::ctrlWPressing()
 {
-  if ((ros::Time::now() - last_upstairs_time_) > ros::Duration(2.0))
+  if ((ros::Time::now() - last_upstairs_time_) > ros::Duration(3.0))
   {
-    if (total_tof_len_ < 0.4)
+    if (total_tof_len_ < jump_up_range_threshold_)
     {
       last_upstairs_time_ = ros::Time::now();
       leg_len_status_ = HIGH;
@@ -269,7 +241,7 @@ void SeriesLeggedManual::ctrlWPressing()
     {
       leg_len_status_ = SHORT;
     }
-    legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
+    setLegLenStatus(leg_len_status_);
   }
 }
 
@@ -301,15 +273,12 @@ void SeriesLeggedManual::upstairStatusCallback(const rm_msgs::LeggedUpstairStatu
     leg_len_status_ = SHORT;
     upstair_leg_len_fsm_ = 0;
   }
-  target_leg_length_ = leg_len_map_[leg_len_status_];
-  legCommandSender_->setLgeLength(target_leg_length_);
-  chassis_cmd_sender_->power_limit_->setBurstPowerLimit(260);
-  chassis_cmd_sender_->power_limit_->updateSafetyPower(260);
+  setLegLenStatus(leg_len_status_);
 }
 
 void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisModeConstPtr& msg)
 {
-  static bool trigger_gimbal_normal_flag{ false };
+  static bool trigger_gimbal_normal_flag{ false }, gimbal_controller_open_flag{ true };
   if (msg->mode != rm_msgs::LeggedChassisMode::NORMAL && !debug_gimbal_flag_)
   {
     double roll{}, pitch{}, yaw{};
@@ -324,12 +293,19 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
     gimbal_cmd_sender_->setGimbalTrajFrameId("base_link");
     if (msg->mode == rm_msgs::LeggedChassisMode::RECOVERY)
     {
-      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
-      gimbal_cmd_sender_->setZero();
+      controller_manager_.stopController("gimbal_controller");
+      gimbal_controller_open_flag = false;
+      //      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
+      //      gimbal_cmd_sender_->setZero();
       reverse_ = false;
     }
     else
     {
+      if (!gimbal_controller_open_flag)
+      {
+        gimbal_controller_open_flag = true;
+        controller_manager_.startController("gimbal_controller");
+      }
       gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
       // avoid leg crash gimbal
       gimbal_cmd_sender_->setGimbalTraj(-0.0, pitch);
@@ -358,9 +334,7 @@ void SeriesLeggedManual::leftSwitchUpRise()
   //  legCommandSender_->setJump(true);
   legCommandSender_->setJump(false);
   upstair_leg_len_fsm_ = 1;
-  leg_len_status_ = HIGH;
-  target_leg_length_ = leg_len_map_[leg_len_status_];
-  legCommandSender_->setLgeLength(target_leg_length_);
+  setLegLenStatus(HIGH);
   return;
 }
 
@@ -369,9 +343,7 @@ void SeriesLeggedManual::leftSwitchMidRise()
   //  BalanceManual::leftSwitchMidRise();
   legCommandSender_->setJump(false);
   upstair_leg_len_fsm_ = 0;
-  leg_len_status_ = MID;
-  target_leg_length_ = leg_len_map_[leg_len_status_];
-  legCommandSender_->setLgeLength(target_leg_length_);
+  setLegLenStatus(MID);
   //  legCommandSender_->setJump(true);
 }
 
@@ -380,9 +352,7 @@ void SeriesLeggedManual::leftSwitchDownRise()
   BalanceManual::leftSwitchDownRise();
   legCommandSender_->setJump(false);
   upstair_leg_len_fsm_ = 0;
-  leg_len_status_ = SHORT;
-  target_leg_length_ = leg_len_map_[leg_len_status_];
-  legCommandSender_->setLgeLength(target_leg_length_);
+  setLegLenStatus(SHORT);
 }
 void SeriesLeggedManual::zPress()
 {
@@ -391,7 +361,7 @@ void SeriesLeggedManual::zPress()
   {
     sit_down_flag_ = false;
     chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::FOLLOW);
-    chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::BURST);
+    chassis_cmd_sender_->power_limit_->updateState(rm_common::PowerLimit::NORMAL);
   }
   else
   {
@@ -418,7 +388,6 @@ void SeriesLeggedManual::robotRevive()
 {
   rm_manual::ChassisGimbalShooterManual::ManualBase::robotRevive();
   setChassisMode(rm_msgs::ChassisCmd::FALLEN);
-  ROS_INFO("%d", revive_motor_online_check_event_.getState());
 }
 
 void SeriesLeggedManual::exitSitDown()
@@ -459,6 +428,7 @@ inline void SeriesLeggedManual::setLegLenStatus(Leg_len_status len_status)
   leg_len_status_ = len_status;
   target_leg_length_ = leg_len_map_[leg_len_status_];
   legCommandSender_->setLgeLength(target_leg_length_);
+  speed_change_scale_ = leg_len_status_ == HIGH ? 0.75 : 1.0;
 }
 void SeriesLeggedManual::rightSwitchDownOn()
 {
@@ -466,4 +436,45 @@ void SeriesLeggedManual::rightSwitchDownOn()
   chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::FALLEN);
 }
 
+void SeriesLeggedManual::aPress()
+{
+}
+
+void SeriesLeggedManual::aPressing()
+{
+}
+
+void SeriesLeggedManual::aRelease()
+{
+}
+
+void SeriesLeggedManual::dPress()
+{
+}
+
+void SeriesLeggedManual::dPressing()
+{
+}
+
+void SeriesLeggedManual::dRelease()
+{
+}
+
+void SeriesLeggedManual::ePress()
+{
+  chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::FALLEN);
+  ChassisGimbalShooterCoverManual::ePress();
+}
+
+void SeriesLeggedManual::eRelease()
+{
+  chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::FOLLOW);
+  ChassisGimbalShooterCoverManual::eRelease();
+}
+
+void SeriesLeggedManual::qPress()
+{
+  ChassisGimbalShooterCoverManual::qPress();
+  jump_up_flag_ = false;
+}
 }  // namespace rm_manual
