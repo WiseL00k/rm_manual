@@ -177,7 +177,6 @@ void SeriesLeggedManual::shiftRelease()
 
 void SeriesLeggedManual::shiftPress()
 {
-  //  chassis_cmd_sender_->updateSafetyPower(110);
   setLegLenStatus(MID);
 }
 
@@ -428,7 +427,7 @@ inline void SeriesLeggedManual::setLegLenStatus(Leg_len_status len_status)
   leg_len_status_ = len_status;
   target_leg_length_ = leg_len_map_[leg_len_status_];
   legCommandSender_->setLgeLength(target_leg_length_);
-  speed_change_scale_ = leg_len_status_ == HIGH ? 0.75 : 1.0;
+  speed_change_scale_ = leg_len_status_ == HIGH ? 0.7 : 1.0;
 }
 void SeriesLeggedManual::rightSwitchDownOn()
 {

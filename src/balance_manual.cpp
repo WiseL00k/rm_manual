@@ -92,7 +92,7 @@ void BalanceManual::shiftPress()
 {
   ChassisGimbalShooterCoverManual::shiftPress();
   chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::UP_SLOPE);
-  chassis_cmd_sender_->updateSafetyPower(150);
+  chassis_cmd_sender_->updateSafetyPower(75);
 }
 
 void BalanceManual::wPress()
