@@ -23,6 +23,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   legCommandSender_->setJump(false);
 
   b_event_.setEdge(boost::bind(&SeriesLeggedManual::bPress, this), boost::bind(&SeriesLeggedManual::bRelease, this));
+  b_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::bPressing, this));
   r_event_.setEdge(boost::bind(&SeriesLeggedManual::rPress, this), boost::bind(&SeriesLeggedManual::rRelease, this));
   r_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::rPressing, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
@@ -278,6 +279,7 @@ void SeriesLeggedManual::upstairStatusCallback(const rm_msgs::LeggedUpstairStatu
 void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisModeConstPtr& msg)
 {
   static bool trigger_gimbal_normal_flag{ false }, gimbal_controller_open_flag{ true };
+  static bool trigger_gimbal_traj_flag = true;
   if (msg->mode != rm_msgs::LeggedChassisMode::NORMAL && !debug_gimbal_flag_)
   {
     double roll{}, pitch{}, yaw{};
@@ -294,8 +296,6 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
     {
       controller_manager_.stopController("gimbal_controller");
       gimbal_controller_open_flag = false;
-      //      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
-      //      gimbal_cmd_sender_->setZero();
       reverse_ = false;
     }
     else
@@ -305,16 +305,33 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
         gimbal_controller_open_flag = true;
         controller_manager_.startController("gimbal_controller");
       }
-      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
-      // avoid leg crash gimbal
-      gimbal_cmd_sender_->setGimbalTraj(-0.0, pitch);
+      else
+      {
+        static ros::Time last_gimbal_traj_time = ros::Time::now();
+        if (trigger_gimbal_traj_flag)
+        {
+          gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::TRAJ);
+          // avoid leg crash gimbal
+          gimbal_cmd_sender_->setGimbalTraj(-0.0, pitch);
+          last_gimbal_traj_time = ros::Time::now();
+          trigger_gimbal_traj_flag = false;
+        }
+        else if ((ros::Time::now().toSec() - last_gimbal_traj_time.toSec()) > 1.5f)
+        {
+          gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
+        }
+      }
     }
     trigger_gimbal_normal_flag = true;
   }
-  else if (trigger_gimbal_normal_flag)
+  else
   {
-    trigger_gimbal_normal_flag = false;
-    gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
+    trigger_gimbal_traj_flag = true;
+    if (trigger_gimbal_normal_flag)
+    {
+      trigger_gimbal_normal_flag = false;
+      gimbal_cmd_sender_->setMode(rm_msgs::GimbalCmd::RATE);
+    }
   }
 }
 
@@ -330,10 +347,10 @@ void SeriesLeggedManual::tofSensorMsgCallback(const sensor_msgs::RangeConstPtr& 
 void SeriesLeggedManual::leftSwitchUpRise()
 {
   //  BalanceManual::leftSwitchUpRise();
-  //  legCommandSender_->setJump(true);
   legCommandSender_->setJump(false);
   upstair_leg_len_fsm_ = 1;
   setLegLenStatus(HIGH);
+
   return;
 }
 
@@ -343,6 +360,8 @@ void SeriesLeggedManual::leftSwitchMidRise()
   legCommandSender_->setJump(false);
   upstair_leg_len_fsm_ = 0;
   setLegLenStatus(MID);
+
+  // <unused>
   //  legCommandSender_->setJump(true);
 }
 
@@ -475,5 +494,10 @@ void SeriesLeggedManual::qPress()
 {
   ChassisGimbalShooterCoverManual::qPress();
   jump_up_flag_ = false;
+}
+
+void SeriesLeggedManual::bPressing()
+{
+  jump_up_flag_ = true;
 }
 }  // namespace rm_manual

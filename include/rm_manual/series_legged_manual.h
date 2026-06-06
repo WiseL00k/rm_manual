@@ -24,6 +24,7 @@ protected:
   void shiftPress() override;
   void shiftRelease() override;
   void bPress() override;
+  void bPressing();
   void bRelease() override;
   void ctrlZPress() override;
   void rightSwitchDownRise() override;
