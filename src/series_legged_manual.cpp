@@ -11,14 +11,16 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   ros::NodeHandle leg_wheel_chassis_nh(nh, "balance/legged_wheel_chassis");
   legCommandSender_ = new rm_common::LegCommandSender(leg_wheel_chassis_nh);
 
-  double short_leg_len{}, mid_leg_length{}, high_leg_len{};
+  double short_leg_len{}, mid_leg_length{}, high_leg_len{}, retraction_leg_len{};
   leg_wheel_chassis_nh.param("short_leg_length", short_leg_len, 0.2);
   leg_wheel_chassis_nh.param("mid_leg_length", mid_leg_length, 0.26);
   leg_wheel_chassis_nh.param("high_leg_length", high_leg_len, 0.36);
+  leg_wheel_chassis_nh.param("retraction_leg_length", retraction_leg_len, 0.12);
   nh.param("debug_gimbal_flag", debug_gimbal_flag_, false);
   leg_len_map_.emplace(SHORT, short_leg_len);
   leg_len_map_.emplace(MID, mid_leg_length);
   leg_len_map_.emplace(HIGH, high_leg_len);
+  leg_len_map_.emplace(LEG_RETRACTION, retraction_leg_len);
   legCommandSender_->setLgeLength(leg_len_map_[leg_len_status_]);
   legCommandSender_->setJump(false);
 
@@ -26,6 +28,8 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   b_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::bPressing, this));
   r_event_.setEdge(boost::bind(&SeriesLeggedManual::rPress, this), boost::bind(&SeriesLeggedManual::rRelease, this));
   r_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::rPressing, this));
+  f_event_.setEdge(boost::bind(&SeriesLeggedManual::fPress, this), boost::bind(&SeriesLeggedManual::fRelease, this));
+  v_event_.setFalling(boost::bind(&SeriesLeggedManual::vRelease, this));
   ctrl_g_event_.setRising(boost::bind(&SeriesLeggedManual::ctrlGPress, this));
   ctrl_g_event_.setFalling(boost::bind(&SeriesLeggedManual::ctrlGRelease, this));
   ctrl_w_event_.setActiveHigh(boost::bind(&SeriesLeggedManual::ctrlWPressing, this));
@@ -53,7 +57,7 @@ SeriesLeggedManual::SeriesLeggedManual(ros::NodeHandle& nh, ros::NodeHandle& nh_
   revive_motor_online_sub_ = leg_wheel_chassis_nh.subscribe<rm_ecat_msgs::RmEcatStandardSlaveReadings>(
       "/rm_ecat_hw/rm_readings", 10, &SeriesLeggedManual::reviveMotorOnlineCallback, this);
   recovery_leg_spd_turnback_pub_ = leg_wheel_chassis_nh.advertise<std_msgs::Bool>("/recovery_leg_spd_turnback", 1);
-
+  down_5cm_stair_client_ = leg_wheel_chassis_nh.serviceClient<std_srvs::Trigger>("/down_5cm_stair");
   xPress_time_ = ctrlXPress_time_ = ros::Time::now();
 }
 
@@ -99,11 +103,13 @@ void SeriesLeggedManual::sendCommand(const ros::Time& time)
     {
       legCommandSender_->setJump(true);
       jump_up_flag_ = false;
+      setLegLenStatus(SHORT);
     }
   }
   else
   {
-    legCommandSender_->setJump(false);
+    // if debug jump , u can delete it
+    //    legCommandSender_->setJump(false);
   }
   legCommandSender_->sendCommand(time);
 }
@@ -120,6 +126,7 @@ void SeriesLeggedManual::checkKeyboard(const rm_msgs::DbusData::ConstPtr& dbus_d
   ctrl_g_event_.update(dbus_data->key_ctrl && dbus_data->key_g);
   ctrl_event_.update(dbus_data->key_ctrl);
   ctrl_w_event_.update(dbus_data->key_ctrl && dbus_data->key_w && !dbus_data->key_g);
+  f_event_.update(dbus_data->key_f && !dbus_data->key_ctrl);
 }
 
 void SeriesLeggedManual::updateRc(const rm_msgs::DbusData::ConstPtr& dbus_data)
@@ -211,11 +218,13 @@ void SeriesLeggedManual::rRelease()
 void SeriesLeggedManual::bPress()
 {
   jump_up_flag_ = true;
+  setLegLenStatus(LEG_RETRACTION);
 }
 
 void SeriesLeggedManual::bRelease()
 {
   jump_up_flag_ = true;
+  setLegLenStatus(LEG_RETRACTION);
 }
 
 void SeriesLeggedManual::ctrlGPress()
@@ -322,7 +331,13 @@ void SeriesLeggedManual::leggedChassisModeCallback(const rm_msgs::LeggedChassisM
         }
       }
     }
+    if (down_5cm_stair_flag_)
+    {
+      down_5cm_stair_flag_ = false;
+      setLegLenStatus(SHORT);
+    }
     trigger_gimbal_normal_flag = true;
+    speed_change_scale_ = leg_len_status_ == HIGH ? 0.7 : 1.0;
   }
   else
   {
@@ -346,20 +361,20 @@ void SeriesLeggedManual::tofSensorMsgCallback(const sensor_msgs::RangeConstPtr& 
 
 void SeriesLeggedManual::leftSwitchUpRise()
 {
-  //  BalanceManual::leftSwitchUpRise();
-  legCommandSender_->setJump(false);
-  upstair_leg_len_fsm_ = 1;
-  setLegLenStatus(HIGH);
+  BalanceManual::leftSwitchUpRise();
+  //  legCommandSender_->setJump(false);
+  //  upstair_leg_len_fsm_ = 1;
+  //  setLegLenStatus(HIGH);
 
   return;
 }
 
 void SeriesLeggedManual::leftSwitchMidRise()
 {
-  //  BalanceManual::leftSwitchMidRise();
-  legCommandSender_->setJump(false);
-  upstair_leg_len_fsm_ = 0;
-  setLegLenStatus(MID);
+  BalanceManual::leftSwitchMidRise();
+  //  legCommandSender_->setJump(false);
+  //  upstair_leg_len_fsm_ = 0;
+  //  setLegLenStatus(MID);
 
   // <unused>
   //  legCommandSender_->setJump(true);
@@ -493,11 +508,31 @@ void SeriesLeggedManual::eRelease()
 void SeriesLeggedManual::qPress()
 {
   ChassisGimbalShooterCoverManual::qPress();
-  jump_up_flag_ = false;
+  down_5cm_stair_flag_ = jump_up_flag_ = false;
+  setLegLenStatus(SHORT);
 }
 
 void SeriesLeggedManual::bPressing()
 {
   jump_up_flag_ = true;
+  setLegLenStatus(LEG_RETRACTION);
+}
+void SeriesLeggedManual::fRelease()
+{
+}
+void SeriesLeggedManual::fPress()
+{
+  shooter_cmd_sender_->raiseSpeed();
+}
+void SeriesLeggedManual::vPress()
+{
+  std_srvs::Trigger srv;
+  down_5cm_stair_client_.call(srv);
+  setLegLenStatus(MID);
+  speed_change_scale_ = 0.5f;
+  down_5cm_stair_flag_ = true;
+}
+void SeriesLeggedManual::vRelease()
+{
 }
 }  // namespace rm_manual
