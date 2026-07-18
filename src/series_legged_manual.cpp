@@ -108,8 +108,7 @@ void SeriesLeggedManual::sendCommand(const ros::Time& time)
   }
   else
   {
-    // if debug jump , u can delete it
-    //    legCommandSender_->setJump(false);
+    legCommandSender_->setJump(false);
   }
   legCommandSender_->sendCommand(time);
 }
